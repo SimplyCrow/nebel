@@ -5,26 +5,19 @@
 #include <vector>
 #include <glm/glm.hpp>
 
-#include "map.hpp"
+#include "world.hpp"
 
 namespace sim
 {
-        class Node {
-        public:
-                glm::ivec2 position;
-        };
-
         int get_random(int min, int max);
 
         class Simulation {
                 public:
                         Simulation(size_t width, size_t height);
                         void iteration();
-                        const Map &get_map() const;
-                        const Node &get_node(size_t index) const;
+                        const World &get_world() const;
                 private:
-                        Map m_map;
-                        std::vector<Node> m_nodes;
+                        World m_world;
         };
 
 }; // namespace sim

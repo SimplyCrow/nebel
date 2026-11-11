@@ -4,7 +4,7 @@ LDFLAGS := $(shell pkgconf --libs sdl3) $(shell pkgconf --libs opengl) $(shell p
 
 SRCS := src/main.cpp src/renderer/renderer.cpp \
         src/glad.cpp src/renderer/shader.cpp \
-        src/simulation.cpp src/map.cpp
+        src/simulation.cpp
 OBJS := $(patsubst %.cpp, %.o, $(SRCS))
 DEPS := $(patsubst %.cpp, %.d, $(SRCS))
 

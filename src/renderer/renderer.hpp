@@ -39,6 +39,7 @@ private:
         float m_delta_time;
         float m_runtime;
         uint64_t m_frame;
+        uint64_t m_target_fps;
         uint64_t m_ns_per_frame;
 
         void setup_sdl();

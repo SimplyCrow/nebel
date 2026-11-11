@@ -8,7 +8,7 @@
 #include "../panic.hpp"
 
 Renderer::Renderer(int initial_width, int initial_height, int target_fps, sim::Simulation &simulation)
-        : m_simulation(simulation), m_width(initial_width), m_height(initial_height), m_ns_per_frame(1000000000ULL / target_fps)
+        : m_simulation(simulation), m_width(initial_width), m_height(initial_height), m_target_fps(target_fps), m_ns_per_frame(1000000000ULL / target_fps)
 {
         setup_sdl();
         setup_opengl();
@@ -36,7 +36,7 @@ void Renderer::setup_sdl()
                 PANIC("(Renderer) Could not create window");
         }
 
-        spdlog::info("(Renderer) Window created w={} h={}", m_width, m_height);
+        spdlog::info("(Renderer) Window created w={} h={} target-fps={}", m_width, m_height, m_target_fps);
 }
 
 void Renderer::setup_opengl()
@@ -95,10 +95,9 @@ void Renderer::setup_render_data()
         glVertexArrayAttribFormat(m_vao, 1, 2, GL_FLOAT, GL_FALSE, 0);
         glVertexArrayAttribBinding(m_vao, 1, 1);
 
-        const sim::Map &map = m_simulation.get_map();
-
+        const World &world = m_simulation.get_world();
         m_zoom = 15.0f;
-        m_camera_position = 0.5f * glm::vec2(map.width(), map.height());
+        m_camera_position = 0.5f * glm::vec2(world.width(), world.height());
         calculate_camera();
 
         m_last_time = SDL_GetTicksNS();
@@ -197,18 +196,13 @@ void Renderer::iteration()
         handle_events();
         clear_screen();
 
-        const sim::Map &map = m_simulation.get_map();
-
+        const World &world = m_simulation.get_world();
+        const auto entities = world.get_entities();
         std::vector<float> translations;
-        translations.reserve(2 * map.width() * map.height());
-        for(size_t y = 0; y < map.height(); ++y) {
-                for(size_t x = 0; x < map.width(); ++x) {
-                        if(!map.contains(x, y))
-                                continue;
-                        const sim::Node &node = m_simulation.get_node(map.get(x, y));
-                        translations.emplace_back(node.position.x);
-                        translations.emplace_back(node.position.y);
-                }
+        translations.reserve(2 * entities.size());
+        for(const Entity& entity : entities) {
+                translations.emplace_back(entity.x);
+                translations.emplace_back(entity.y);
         }
 
         glDeleteBuffers(1, &m_instanced);

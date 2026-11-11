@@ -6,6 +6,7 @@
 
 #include "renderer/renderer.hpp"
 #include "simulation.hpp"
+#include "world.hpp"
 
 static int WIDTH  = 800;
 static int HEIGHT = 600;
