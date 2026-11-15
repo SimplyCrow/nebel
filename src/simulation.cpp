@@ -21,7 +21,7 @@ namespace sim {
                 : m_world(width, height)
         {
                 spdlog::info("(Simulation) Created with w={} h={}", width, height);
-                for(size_t i = 0; i < 25; ++i) {
+                for(size_t i = 0; i < 100 * 100 * 0.25f; ++i) {
                         Entity entity(get_random(0, width - 1), get_random(0, height - 1));
 
                         while(m_world.collision(entity.x, entity.y)) {

@@ -7,9 +7,39 @@
 #include "renderer.hpp"
 #include "../panic.hpp"
 
-Renderer::Renderer(int initial_width, int initial_height, int target_fps, sim::Simulation &simulation)
-        : m_simulation(simulation), m_width(initial_width), m_height(initial_height), m_target_fps(target_fps), m_ns_per_frame(1000000000ULL / target_fps)
+Renderer::Renderer(int initial_width, int initial_height, uint64_t target_fps, sim::Simulation &simulation)
+        : m_simulation(simulation)
 {
+        m_window = {
+                .running = true,
+                .width   = initial_width,
+                .height  = initial_height,
+                .window  = nullptr
+        };
+
+        m_frame = {
+                .current_frame = 0, .target_fps    = target_fps,
+                .ns_per_frame  = 1000000000ULL / target_fps,
+                .start_frame_time = 0,
+                .last_frame_time  = 0,
+                .delta_time       = 0,
+                .total_runtime    = 0,
+                .fps_timer        = 0,
+                .fps_count        = 0
+        };
+
+        m_gl = {
+                .context = nullptr,
+                .shaders = {},
+                .instanced_square_vao = 0,
+                .unit_square_vao = 0,
+        };
+
+        m_camera = {
+                .position = {0, 0},
+                .zoom = 15.0f
+        };
+
         setup_sdl();
         setup_opengl();
         setup_render_data();
@@ -31,18 +61,18 @@ void Renderer::setup_sdl()
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
-        m_window = SDL_CreateWindow("Nebel", m_width, m_height, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
-        if(m_window == nullptr) {
+        m_window.window = SDL_CreateWindow("Nebel", m_window.width, m_window.height, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+        if(m_window.window == nullptr) {
                 PANIC("(Renderer) Could not create window");
         }
 
-        spdlog::info("(Renderer) Window created w={} h={} target-fps={}", m_width, m_height, m_target_fps);
+        spdlog::info("(Renderer) Window created w={} h={} target-fps={}", m_window.width, m_window.height, m_frame.target_fps);
 }
 
 void Renderer::setup_opengl()
 {
-        SDL_GLContext m_context = SDL_GL_CreateContext(m_window);
-        if(!m_context) {
+        m_gl.context = SDL_GL_CreateContext(m_window.window);
+        if(!m_gl.context) {
                 PANIC("(Renderer) Could not create OpenGL context: {}", SDL_GetError());
         }
 
@@ -55,53 +85,77 @@ void Renderer::setup_opengl()
 
         spdlog::info("(Renderer) OpenGL version loaded: {}.{}", GLAD_VERSION_MAJOR(open_version), GLAD_VERSION_MINOR(open_version));
 
-        glEnable(GL_DEPTH_TEST);
         glEnable(GL_BLEND);
 
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glViewport(0, 0, m_window.width, m_window.height);
 
-        handle_resize();
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 void Renderer::setup_render_data()
 {
         spdlog::info("(Renderer) Initializes render data");
 
-        Shader shader("./res/shader/vert.vs", "./res/shader/frag.fs");
-        m_circle_shader = shader;
-        m_circle_shader.use();
+        load_shader("circle", "./res/shader/instanced_vertex.vs", "./res/shader/circle.fs");
+        load_shader("grid", "./res/shader/vertex.vs", "./res/shader/grid.fs");
+        load_shader("origin", "./res/shader/vertex.vs", "./res/shader/origin.fs");
 
         float vertices[] = {
-                -1.0f, -1.0f,
-                -1.0f,  1.0f,
-                 1.0f, -1.0f,
-                -1.0f,  1.0f,
-                 1.0f,  1.0f,
-                 1.0f, -1.0f,
+                /* bl */ -0.5f, -0.5f,   0.0f, 0.0f,
+                /* tl */ -0.5f,  0.5f,   0.0f, 1.0f,
+                /* br */  0.5f, -0.5f,   1.0f, 0.0f,
+                /* tl */ -0.5f,  0.5f,   0.0f, 1.0f,
+                /* tr */  0.5f,  0.5f,   1.0f, 1.0f,
+                /* br */  0.5f, -0.5f,   1.0f, 0.0f,
         };
 
         GLuint VBO;
+
+        // unit square
         glCreateBuffers(1, &VBO);
         glNamedBufferStorage(VBO, sizeof(vertices), vertices, GL_DYNAMIC_STORAGE_BIT);
+        glCreateVertexArrays(1, &m_gl.unit_square_vao);
+        glVertexArrayVertexBuffer(m_gl.unit_square_vao, 0, VBO, 0, 4 * sizeof(float));
+        // position
+        glEnableVertexArrayAttrib(m_gl.unit_square_vao, 0);
+        glVertexArrayAttribFormat(m_gl.unit_square_vao, 0, 2, GL_FLOAT, GL_FALSE, 0);
+        glVertexArrayAttribBinding(m_gl.unit_square_vao, 0, 0);
+        // texture coord
+        glEnableVertexArrayAttrib(m_gl.unit_square_vao, 1);
+        glVertexArrayAttribFormat(m_gl.unit_square_vao, 1, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float));
+        glVertexArrayAttribBinding(m_gl.unit_square_vao, 1, 0);
 
-        glCreateVertexArrays(1, &m_vao);
-        glVertexArrayVertexBuffer(m_vao, 0, VBO, 0, 2 * sizeof(float));
-
-        glEnableVertexArrayAttrib(m_vao, 0);
-        glVertexArrayAttribFormat(m_vao, 0, 2, GL_FLOAT, GL_FALSE, 0);
-        glVertexArrayAttribBinding(m_vao, 0, 0);
-
-        glEnableVertexArrayAttrib(m_vao, 1);
-        glVertexArrayAttribFormat(m_vao, 1, 2, GL_FLOAT, GL_FALSE, 0);
-        glVertexArrayAttribBinding(m_vao, 1, 1);
+        // instanced square
+        glCreateBuffers(1, &VBO);
+        glNamedBufferStorage(VBO, sizeof(vertices), vertices, GL_DYNAMIC_STORAGE_BIT);
+        glCreateVertexArrays(1, &m_gl.instanced_square_vao);
+        glVertexArrayVertexBuffer(m_gl.instanced_square_vao, 0, VBO, 0, 4 * sizeof(float));
+        // position
+        glEnableVertexArrayAttrib(m_gl.instanced_square_vao, 0);
+        glVertexArrayAttribFormat(m_gl.instanced_square_vao, 0, 2, GL_FLOAT, GL_FALSE, 0);
+        glVertexArrayAttribBinding(m_gl.instanced_square_vao, 0, 0);
+        // texture coord
+        glEnableVertexArrayAttrib(m_gl.instanced_square_vao, 1);
+        glVertexArrayAttribFormat(m_gl.instanced_square_vao, 1, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float));
+        glVertexArrayAttribBinding(m_gl.instanced_square_vao, 1, 0);
+        // instance offset
+        glEnableVertexArrayAttrib(m_gl.instanced_square_vao, 2);
+        glVertexArrayAttribFormat(m_gl.instanced_square_vao, 2, 2, GL_FLOAT, GL_FALSE, 0);
+        glVertexArrayAttribBinding(m_gl.instanced_square_vao, 2, 1);
 
         const World &world = m_simulation.get_world();
-        m_zoom = 15.0f;
-        m_camera_position = 0.5f * glm::vec2(world.width(), world.height());
+        m_camera.position = 0.5f * glm::vec2(world.width(), world.height());
         calculate_camera();
 
-        m_last_time = SDL_GetTicksNS();
-        m_frame = 0;
+        m_frame.last_frame_time = SDL_GetTicksNS();
+}
+
+void Renderer::load_shader(std::string name, std::string vertex_path, std::string fragment_path)
+{
+        auto [it, inserted] = m_gl.shaders.try_emplace(name, vertex_path, fragment_path);
+        if(!inserted) {
+                PANIC("(Renderer) Tried to load shader with an already used name \"{}\" (vs={}, fs={})", name, vertex_path, fragment_path);
+        }
 }
 
 Renderer::~Renderer()
@@ -115,15 +169,15 @@ void Renderer::handle_events()
         SDL_Event event;
         while(SDL_PollEvent(&event)) {
                 if(event.type == SDL_EVENT_QUIT) {
-                        m_running = false;
+                        m_window.running = false;
                         continue;
                 }
 
                 if(event.type == SDL_EVENT_WINDOW_RESIZED) {
-                        m_width = event.window.data1;
-                        m_height = event.window.data2;
-                        handle_resize();
-                        spdlog::info("(Renderer) Resized w={} h={}", m_width, m_height);
+                        m_window.width = event.window.data1;
+                        m_window.height = event.window.data2;
+                        glViewport(0, 0, m_window.width, m_window.height);
+                        spdlog::info("(Renderer) Resized w={} h={}", m_window.width, m_window.height);
                 }
         }
 
@@ -153,48 +207,76 @@ void Renderer::handle_events()
         }
 
         if(dir.x != 0.0f || dir.y != 0.0f) {
-                glm::vec2 mov = dir * (m_delta_time * speed);
-                m_camera_position += mov;
+                glm::vec2 mov = dir * (m_frame.delta_time * speed);
+                m_camera.position += mov;
                 calculate_camera();
         }
 
         if(zoom_direction) {
-                m_zoom += zoom_direction * zoom_speed * m_delta_time;
-                if(m_zoom < 0.0f)
-                        m_zoom = 0.0f;
-                handle_resize();
+                m_camera.zoom += zoom_direction * zoom_speed * m_frame.delta_time;
+                if(m_camera.zoom < 0.0f)
+                        m_camera.zoom = 0.0f;
         }
-}
-
-void Renderer::handle_resize()
-{
-        glViewport(0, 0, m_width, m_height);
-        float aspect_ratio = (float)m_width / (float)m_height;
-        float world_width = 10.0f;
-        float world_height = world_width / aspect_ratio;
-
-        float left   = (-world_width / 2.0f) * m_zoom;
-        float right  = ( world_width / 2.0f) * m_zoom;
-        float bottom = (-world_height / 2.0f) * m_zoom;
-        float top    = ( world_height / 2.0f) * m_zoom;
-        m_projection = glm::ortho(left, right, bottom, top, -10.0f, 10.0f);
 }
 
 void Renderer::calculate_camera()
 {
-        m_view = glm::mat4(1.0f);
-        m_view = glm::translate(m_view, glm::vec3(-m_camera_position, 0.0f));
+}
+
+void Renderer::frame_start()
+{
+        m_frame.start_frame_time = SDL_GetTicksNS();
+        m_frame.total_runtime = static_cast<float>(m_frame.start_frame_time / 1000000000.0f);
+        m_frame.delta_time = static_cast<float>(
+                (m_frame.start_frame_time - m_frame.last_frame_time) / 1000000000.0f
+        );
+        m_frame.fps_timer += m_frame.delta_time;
+
+        handle_events();
+        clear_screen();
+}
+
+void Renderer::frame_end()
+{
+        uint64_t frame_time = SDL_GetTicksNS() - m_frame.start_frame_time;
+        if(frame_time < m_frame.ns_per_frame) {
+                SDL_DelayNS(m_frame.ns_per_frame - frame_time);
+        }
+        m_frame.last_frame_time = m_frame.start_frame_time;
+        SDL_GL_SwapWindow(m_window.window);
+        ++m_frame.current_frame;
+        ++m_frame.fps_count;
+        if(m_frame.fps_timer > 5.0f) {
+
+                float fps = m_frame.fps_count / m_frame.fps_timer;
+                spdlog::info("(Renderer) fps: {}", fps);
+
+                m_frame.fps_timer = 0.0f;
+                m_frame.fps_count = 0;
+        }
+}
+
+void Renderer::calculate_matrices(glm::mat4 &view, glm::mat4 &projection)
+{
+        view = glm::translate(glm::mat4(1.0f), glm::vec3(-m_camera.position, 0.0f));
+
+        float aspect_ratio = static_cast<float>(m_window.width) / static_cast<float>(m_window.height);
+        float world_width = 10.0f;
+        float world_height = world_width / aspect_ratio;
+
+        float left   = (-world_width / 2.0f) * m_camera.zoom;
+        float right  = ( world_width / 2.0f) * m_camera.zoom;
+        float bottom = (-world_height / 2.0f) * m_camera.zoom;
+        float top    = ( world_height / 2.0f) * m_camera.zoom;
+        projection = glm::ortho(left, right, bottom, top, -10.0f, 10.0f);
 }
 
 void Renderer::iteration()
 {
-        uint64_t frame_start = SDL_GetTicksNS();
-        m_delta_time = (float)(frame_start - m_last_time) / 1000000000.0f;
-        m_runtime = (float)frame_start / 1000000000.0f;
-        m_last_time = frame_start;
+        frame_start();
 
-        handle_events();
-        clear_screen();
+        glm::mat4 view_matrix, projection_matrix;
+        calculate_matrices(view_matrix, projection_matrix);
 
         const World &world = m_simulation.get_world();
         const auto entities = world.get_entities();
@@ -205,32 +287,53 @@ void Renderer::iteration()
                 translations.emplace_back(entity.y);
         }
 
-        glDeleteBuffers(1, &m_instanced);
-        glCreateBuffers(1, &m_instanced);
-        glNamedBufferStorage(m_instanced, translations.size() * sizeof(float), translations.data(), GL_DYNAMIC_STORAGE_BIT);
-        glVertexArrayVertexBuffer(m_vao, 1, m_instanced, 0, 2 * sizeof(float));
-        glVertexArrayBindingDivisor(m_vao, 1, 1);
+        GLuint translations_buffer;
+        glCreateBuffers(1, &translations_buffer);
+        glNamedBufferStorage(translations_buffer, translations.size() * sizeof(float), translations.data(), GL_DYNAMIC_STORAGE_BIT);
+        glVertexArrayVertexBuffer(m_gl.instanced_square_vao, 1, translations_buffer, 0, 2 * sizeof(float));
+        glVertexArrayBindingDivisor(m_gl.instanced_square_vao, 1, 1);
 
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(3.0f, 3.0f, 0.0f));
-        model = glm::rotate(model, glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        model = glm::scale(model, glm::vec3(1.0f));
-
-        m_circle_shader.use();
-        m_circle_shader.set_mat4("uModel", model);
-        m_circle_shader.set_mat4("uView", m_view);
-        m_circle_shader.set_mat4("uProjection", m_projection);
-        glBindVertexArray(m_vao);
-        glDrawArraysInstanced(GL_TRIANGLES, 0, 6, translations.size() / 2);
+        glm::mat4 model_grid = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
+        model_grid = glm::rotate(model_grid, glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        model_grid = glm::scale(model_grid, glm::vec3(100));
+        m_gl.shaders["grid"].use();
+        m_gl.shaders["grid"].set_vec2("uAnchor", glm::vec2(-0.5f));
+        m_gl.shaders["grid"].set_mat4("uModel", model_grid);
+        m_gl.shaders["grid"].set_mat4("uView", view_matrix);
+        m_gl.shaders["grid"].set_mat4("uProjection", projection_matrix);
+        m_gl.shaders["grid"].set_int("uGridWidth", world.width());
+        m_gl.shaders["grid"].set_int("uGridHeight", world.height());
+        glBindVertexArray(m_gl.unit_square_vao);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
         glBindVertexArray(0);
 
-        SDL_GL_SwapWindow(m_window);
-        ++m_frame;
+        glm::mat4 model_circle = glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, 0.5f, 0.0f));
+        model_circle = glm::rotate(model_circle, glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        model_circle = glm::scale(model_circle, glm::vec3(1.0f));
 
-        uint64_t frame_time = SDL_GetTicksNS() - frame_start;
-        if(frame_time < m_ns_per_frame) {
-                SDL_DelayNS(m_ns_per_frame - frame_time);
-        }
+        m_gl.shaders["circle"].use();
+        m_gl.shaders["circle"].set_vec2("uAnchor", glm::vec2(0.0f));
+        m_gl.shaders["circle"].set_mat4("uModel", model_circle);
+        m_gl.shaders["circle"].set_mat4("uView", view_matrix);
+        m_gl.shaders["circle"].set_mat4("uProjection", projection_matrix);
+        glBindVertexArray(m_gl.instanced_square_vao);
+        glDrawArraysInstanced(GL_TRIANGLES, 0, 6, translations.size() / 2);
+        glBindVertexArray(0);
+        glDeleteBuffers(1, &translations_buffer);
+
+        glm::mat4 model_origin = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
+        model_origin = glm::rotate(model_origin, glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        model_origin = glm::scale(model_origin, glm::vec3(1.0f));
+        m_gl.shaders["origin"].use();
+        m_gl.shaders["origin"].set_vec2("uAnchor", glm::vec2(0.0f));
+        m_gl.shaders["origin"].set_mat4("uModel", model_origin);
+        m_gl.shaders["origin"].set_mat4("uView", view_matrix);
+        m_gl.shaders["origin"].set_mat4("uProjection", projection_matrix);
+        glBindVertexArray(m_gl.unit_square_vao);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glBindVertexArray(0);
+
+        frame_end();
 }
 
 void Renderer::clear_screen()

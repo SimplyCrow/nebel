@@ -46,6 +46,24 @@ public:
                 glUniform1f(location, value);
         }
 
+        void set_vec2(const std::string &name, float x, float y) const
+        {
+                int location = glGetUniformLocation(m_program, name.c_str());
+                if(location == -1) {
+                        return;
+                }
+                glUniform2f(location, x, y);
+        }
+
+        void set_vec2(const std::string &name, glm::vec2 vec) const
+        {
+                int location = glGetUniformLocation(m_program, name.c_str());
+                if(location == -1) {
+                        return;
+                }
+                glUniform2f(location, vec.x, vec.y);
+        }
+
         void set_vec3(const std::string &name, float x, float y, float z) const
         {
                 int location = glGetUniformLocation(m_program, name.c_str());
