@@ -1,10 +1,25 @@
-CXX := g++
-CXXFLAGS := -std=gnu++23 -Wall -Wextra -MP -MMD -I./vendor/glad2
-LDFLAGS := $(shell pkgconf --libs sdl3) $(shell pkgconf --libs opengl) $(shell pkgconf --libs spdlog) -lm
+LIBS := sdl3 opengl spdlog libconfig++ freetype2
 
-SRCS := src/main.cpp src/renderer/renderer.cpp \
-        src/glad.cpp src/renderer/shader.cpp \
-        src/simulation.cpp
+IMGUI_DIR    := ./vendor/imgui
+IMGUI_CFLAGS := -I$(IMGUI_DIR)
+IMGUI_SRCS   := $(IMGUI_DIR)/imgui.cpp \
+		$(IMGUI_DIR)/imgui_draw.cpp \
+		$(IMGUI_DIR)/imgui_tables.cpp \
+		$(IMGUI_DIR)/imgui_widgets.cpp \
+		$(IMGUI_DIR)/imgui_demo.cpp \
+		$(IMGUI_DIR)/backends/imgui_impl_sdl3.cpp \
+		$(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
+
+LIBS_CFLAGS := $(IMGUI_CFLAGS)
+LIBS_SRCS := $(IMGUI_SRCS)
+
+CXX := g++
+CXXFLAGS := -std=gnu++23 -Wall -Wextra -MP -MMD -I./vendor/glad2 $(shell pkgconf --shared --cflags $(LIBS)) $(LIBS_CFLAGS) -O3 -ggdb
+LDFLAGS := $(shell pkgconf --shared --libs $(LIBS)) -lm
+
+SRCS := $(LIBS_SRCS) src/main.cpp \
+	src/renderer/renderer.cpp src/glad.cpp src/renderer/shader.cpp \
+        src/simulation/simulation.cpp src/config/config.cpp
 OBJS := $(patsubst %.cpp, %.o, $(SRCS))
 DEPS := $(patsubst %.cpp, %.d, $(SRCS))
 
@@ -27,6 +42,10 @@ clean:
 	rm -rf ./src/*.d
 	rm -rf ./src/**/*.o
 	rm -rf ./src/**/*.d
+	rm -rf ./vendor/imgui/*.o
+	rm -rf ./vendor/imgui/*.d
+	rm -rf ./vendor/imgui/**/*.o
+	rm -rf ./vendor/imgui/**/*.d
 	rm -f  nebel
 
 -include $(DEPS)

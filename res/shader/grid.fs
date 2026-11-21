@@ -10,8 +10,8 @@ uniform int uGridHeight;
 
 void main()
 {
-        vec3 color1 = vec3(7 / 255.0f, 166 / 255.0f, 20 / 255.0f);
-        vec3 color2 = vec3(38 / 255.0f, 255 / 255.0f, 56 / 255.0f);
+        vec3 color1 = vec3(40 / 255.0f);
+        vec3 color2 = vec3(60 / 255.0f);
 
         vec2 size = vec2(uGridWidth, uGridHeight);
         vec2 pos = floor(texture_coord * size);

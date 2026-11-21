@@ -2,3 +2,6 @@
 - OpenGL
 - GLM
 - Eigen
+- libconfig
+- FreeType
+- Imgui
