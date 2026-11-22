@@ -92,16 +92,19 @@ namespace simulation {
                                 const size_t index = m_grid[cell];
                                 if(index == INVALID_INDEX)
                                         return false;
-                                const size_t last_index = m_entities.size() - 1;
-                                if(index != last_index) {
-                                        Entity &moved = m_entities[last_index];
-                                        m_entities[index] = moved;
-                                        m_grid[index_of(moved.x, moved.y)] = index;
-                                }
-
-                                m_entities.pop_back();
-                                m_grid[cell] = INVALID_INDEX;
+                                remove_entity_index(index);
                                 return true;
+                        }
+
+                        template <typename Pred>
+                        void remove_filter(Pred pred)
+                        {
+                                size_t i = m_entities.size();
+                                while(i-- > 0) {
+                                        if(pred(m_entities[i])) {
+                                                remove_entity_index(i);
+                                        }
+                                }
                         }
 
                         size_t get_iteration() const
@@ -139,6 +142,19 @@ namespace simulation {
                                 if(x >= m_width || y >= m_height) [[unlikely]] {
                                         PANIC(simulation, "World: Invalid range check. w={} h={} x={} y={}", m_width, m_height, x, y);
                                 }
+                        }
+
+                        void remove_entity_index(size_t index)
+                        {
+                                const size_t cell = index_of(m_entities[index].x, m_entities[index].y);
+                                const size_t last_index = m_entities.size() - 1;
+                                if(index != last_index) {
+                                        Entity &moved = m_entities[last_index];
+                                        m_entities[index] = moved;
+                                        m_grid[index_of(moved.x, moved.y)] = index;
+                                }
+                                m_entities.pop_back();
+                                m_grid[cell] = INVALID_INDEX;
                         }
         };
 

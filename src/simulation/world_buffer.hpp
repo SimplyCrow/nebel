@@ -23,7 +23,7 @@ namespace simulation {
                 WorldBuffer(const WorldBuffer&) = delete;
                 WorldBuffer& operator=(const WorldBuffer&) = delete;
 
-                std::pair<const World&, World&> new_simulation_step()
+                std::pair<const World*, World*> new_simulation_step()
                 {
                         const size_t render_idx = m_render_idx.load(std::memory_order_acquire);
                         const size_t published_idx = m_published_idx.load(std::memory_order_acquire);
@@ -41,7 +41,7 @@ namespace simulation {
                         m_worlds[write_idx].clear();
                         m_sim_read_idx = read_idx;
                         m_sim_write_idx = write_idx;
-                        return {m_worlds[read_idx], m_worlds[write_idx]};
+                        return {&m_worlds[read_idx], &m_worlds[write_idx]};
                 }
 
                 void publish_simulation_step()

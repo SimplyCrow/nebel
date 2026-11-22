@@ -14,12 +14,15 @@ LIBS_CFLAGS := $(IMGUI_CFLAGS)
 LIBS_SRCS := $(IMGUI_SRCS)
 
 CXX := g++
-CXXFLAGS := -std=gnu++23 -Wall -Wextra -MP -MMD -I./vendor/glad2 $(shell pkgconf --shared --cflags $(LIBS)) $(LIBS_CFLAGS) -O3 -ggdb
-LDFLAGS := $(shell pkgconf --shared --libs $(LIBS)) -lm
+OPTIMIZATION := -O3
+DEBUGFLAGS := -ggdb
+CXXFLAGS := -std=gnu++23 -Wall -Wextra -MP -MMD -I./vendor/glad2 $(shell pkgconf --shared --cflags $(LIBS)) $(LIBS_CFLAGS) $(OPTIMIZATION) $(DEBUGFLAGS)
+LDFLAGS := $(shell pkgconf --shared --libs $(LIBS)) -lstdc++exp -lm
 
 SRCS := $(LIBS_SRCS) src/main.cpp \
 	src/renderer/renderer.cpp src/glad.cpp src/renderer/shader.cpp \
-        src/simulation/simulation.cpp src/config/config.cpp
+        src/simulation/simulation.cpp src/config/config.cpp \
+	src/simulation/neural/neural.cpp
 OBJS := $(patsubst %.cpp, %.o, $(SRCS))
 DEPS := $(patsubst %.cpp, %.d, $(SRCS))
 

@@ -27,6 +27,15 @@ namespace simulation
                         std::chrono::steady_clock::duration m_period;
                         std::chrono::time_point<std::chrono::steady_clock> m_report_start;
                         uint64_t m_ticks_since_last_report = 0;
+
+                        uint64_t m_iterations_per_cycle = 300;
+                        uint64_t m_current_iteration = 0;
+
+                        const World* m_input;
+                        World* m_output;
+
+                        void start_simulation_step();
+
         };
 
 }; // namespace simulation
